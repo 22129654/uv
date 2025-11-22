@@ -6500,7 +6500,6 @@ dependencies = [
  "fs-err",
  "futures",
  "md-5",
- "rayon",
  "regex",
  "reqwest",
  "rustc-hash",
@@ -6509,13 +6508,11 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "uv-configuration",
  "uv-distribution-filename",
  "uv-pypi-types",
  "uv-static",
  "uv-warnings",
  "xz2",
- "zip",
 ]
 
 [[package]]
