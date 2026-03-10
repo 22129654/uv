@@ -2757,6 +2757,7 @@ pub(crate) fn detect_conflicts(
 pub(crate) fn script_specification(
     script: Pep723ItemRef<'_>,
     settings: &ResolverSettings,
+    workspace_cache: &WorkspaceCache,
     credentials_cache: &CredentialsCache,
 ) -> Result<Option<RequirementsSpecification>, ProjectError> {
     let Some(dependencies) = script.metadata().dependencies.as_ref() else {
@@ -2777,6 +2778,7 @@ pub(crate) fn script_specification(
                 script_sources,
                 script_indexes,
                 &settings.index_locations,
+                workspace_cache,
                 credentials_cache,
             )
             .map_ok(LoweredRequirement::into_inner)
@@ -2798,6 +2800,7 @@ pub(crate) fn script_specification(
                 script_sources,
                 script_indexes,
                 &settings.index_locations,
+                workspace_cache,
                 credentials_cache,
             )
             .map_ok(LoweredRequirement::into_inner)
@@ -2819,6 +2822,7 @@ pub(crate) fn script_specification(
                 script_sources,
                 script_indexes,
                 &settings.index_locations,
+                workspace_cache,
                 credentials_cache,
             )
             .map_ok(LoweredRequirement::into_inner)
@@ -2847,6 +2851,7 @@ pub(crate) fn script_specification(
 pub(crate) fn script_extra_build_requires(
     script: Pep723ItemRef<'_>,
     settings: &ResolverSettings,
+    workspace_cache: &WorkspaceCache,
     credentials_cache: &CredentialsCache,
 ) -> Result<LoweredExtraBuildDependencies, ProjectError> {
     let script_dir = script.directory()?;
@@ -2880,6 +2885,7 @@ pub(crate) fn script_extra_build_requires(
                         script_sources,
                         script_indexes,
                         &settings.index_locations,
+                        workspace_cache,
                         credentials_cache,
                     )
                     .map_ok(move |requirement| ExtraBuildRequirement {
