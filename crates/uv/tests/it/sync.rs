@@ -16469,8 +16469,7 @@ async fn sync_malware_detected() {
     Resolved 2 packages in [TIME]
     warning: Malware detected in locked dependencies:
       - `iniconfig==2.0.0`: MAL-2026-1234 (https://osv.dev/vulnerability/MAL-2026-1234)
-    error: Malware detected in locked dependencies; aborting sync. Set `UV_MALWARE_CHECK=0` to bypass this check.
-      - `iniconfig==2.0.0`: MAL-2026-1234 (https://osv.dev/vulnerability/MAL-2026-1234)
+    error: Malware detected in one or more dependencies that would be installed; aborting sync. Set `UV_MALWARE_CHECK=0` to bypass this check.
     ");
 }
 
@@ -16575,8 +16574,7 @@ async fn sync_malware_check_skips_non_mal() {
     Resolved 2 packages in [TIME]
     warning: Malware detected in locked dependencies:
       - `iniconfig==2.0.0`: MAL-2026-5678 (https://osv.dev/vulnerability/MAL-2026-5678)
-    error: Malware detected in locked dependencies; aborting sync. Set `UV_MALWARE_CHECK=0` to bypass this check.
-      - `iniconfig==2.0.0`: MAL-2026-5678 (https://osv.dev/vulnerability/MAL-2026-5678)
+    error: Malware detected in one or more dependencies that would be installed; aborting sync. Set `UV_MALWARE_CHECK=0` to bypass this check.
     ");
 }
 

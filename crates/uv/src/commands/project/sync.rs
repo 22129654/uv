@@ -987,19 +987,14 @@ async fn check_malware(
             MalwareFindings(malware_findings.clone())
         );
 
-        let installed_malware_findings: Vec<_> = malware_findings
-            .into_iter()
-            .filter(|(dependency, _)| {
-                installed_dependencies.contains(&(dependency.name(), dependency.version()))
-            })
-            .collect();
+        let has_installed_malware = malware_findings.iter().any(|(dependency, _)| {
+            installed_dependencies.contains(&(dependency.name(), dependency.version()))
+        });
 
-        if installed_malware_findings.is_empty() {
-            Ok(())
+        if has_installed_malware {
+            Err(ProjectError::MalwareFound)
         } else {
-            Err(ProjectError::MalwareFound(MalwareFindings(
-                installed_malware_findings,
-            )))
+            Ok(())
         }
     }
 }
