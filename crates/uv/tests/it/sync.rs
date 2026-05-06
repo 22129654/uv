@@ -16467,6 +16467,8 @@ async fn sync_malware_detected() {
 
     ----- stderr -----
     Resolved 2 packages in [TIME]
+    warning: Malware detected in locked dependencies:
+      - `iniconfig==2.0.0`: MAL-2026-1234 (https://osv.dev/vulnerability/MAL-2026-1234)
     error: Malware detected in locked dependencies; aborting sync. Set `UV_MALWARE_CHECK=0` to bypass this check.
       - `iniconfig==2.0.0`: MAL-2026-1234 (https://osv.dev/vulnerability/MAL-2026-1234)
     ");
@@ -16571,6 +16573,8 @@ async fn sync_malware_check_skips_non_mal() {
 
     ----- stderr -----
     Resolved 2 packages in [TIME]
+    warning: Malware detected in locked dependencies:
+      - `iniconfig==2.0.0`: MAL-2026-5678 (https://osv.dev/vulnerability/MAL-2026-5678)
     error: Malware detected in locked dependencies; aborting sync. Set `UV_MALWARE_CHECK=0` to bypass this check.
       - `iniconfig==2.0.0`: MAL-2026-5678 (https://osv.dev/vulnerability/MAL-2026-5678)
     ");
@@ -16648,7 +16652,8 @@ async fn sync_malware_check_network_error() {
         .sync()
         .arg("--preview-features").arg("malware-check")
         .env(EnvVars::UV_MALWARE_CHECK, "1")
-        .env(EnvVars::UV_MALWARE_CHECK_URL, server.uri()), @"
+        .env(EnvVars::UV_MALWARE_CHECK_URL, server.uri())
+        .env(EnvVars::UV_TEST_NO_HTTP_RETRY_DELAY, "true"), @"
     success: false
     exit_code: 2
     ----- stdout -----
@@ -16688,8 +16693,7 @@ async fn sync_malware_check_url_invalid() {
     ");
 }
 
-/// Test that malware checks are limited to the installed set,
-/// not all packages in the lockfile.
+/// Test that malware checks query all extras and groups, but only fail for the installed set.
 #[tokio::test]
 async fn sync_malware_check_skips_inactive_extras_and_groups() {
     let context = uv_test::test_context!("3.12");
@@ -16715,29 +16719,17 @@ async fn sync_malware_check_skips_inactive_extras_and_groups() {
 
     let server = MockServer::start().await;
 
-    // If either the inactive extra's package or the non-default group's package
-    // is queried, return malware.
     Mock::given(method("POST"))
         .and(path("/v1/querybatch"))
+        .and(body_string_contains("iniconfig"))
         .and(body_string_contains("typing-extensions"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "results": [{"vulns": [{"id": "MAL-INACTIVE-EXTRA"}]}]
-        })))
-        .mount(&server)
-        .await;
-    Mock::given(method("POST"))
-        .and(path("/v1/querybatch"))
         .and(body_string_contains("sortedcontainers"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "results": [{"vulns": [{"id": "MAL-INACTIVE-GROUP"}]}]
-        })))
-        .mount(&server)
-        .await;
-
-    Mock::given(method("POST"))
-        .and(path("/v1/querybatch"))
-        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "results": [{"vulns": []}]
+            "results": [
+                {"vulns": []},
+                {"vulns": [{"id": "MAL-INACTIVE-GROUP"}]},
+                {"vulns": [{"id": "MAL-INACTIVE-EXTRA"}]}
+            ]
         })))
         .mount(&server)
         .await;
@@ -16753,6 +16745,9 @@ async fn sync_malware_check_skips_inactive_extras_and_groups() {
 
     ----- stderr -----
     Resolved 4 packages in [TIME]
+    warning: Malware detected in locked dependencies:
+      - `sortedcontainers==2.4.0`: MAL-INACTIVE-GROUP (https://osv.dev/vulnerability/MAL-INACTIVE-GROUP)
+      - `typing-extensions==4.10.0`: MAL-INACTIVE-EXTRA (https://osv.dev/vulnerability/MAL-INACTIVE-EXTRA)
     Prepared 1 package in [TIME]
     Installed 1 package in [TIME]
      + iniconfig==2.0.0

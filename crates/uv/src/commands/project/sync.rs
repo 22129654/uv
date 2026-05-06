@@ -870,8 +870,7 @@ pub(super) async fn do_sync(
         }
         check_malware(
             &target,
-            extras,
-            groups,
+            &resolution,
             malware_check_client_builder,
             concurrency,
             malware_settings.malware_check_url.clone(),
@@ -914,17 +913,26 @@ pub(super) async fn do_sync(
 /// Run a malware check against OSV before installing dependencies.
 ///
 /// This queries the OSV batch endpoint with [`Filter::Malware`] to detect only `MAL-`-prefixed
-/// advisories. If malware is found, installation is aborted. Network errors or service failures
-/// are silently swallowed (with a `trace!` log) so that offline scenarios don't block work.
+/// advisories. All lockfile malware findings are emitted as warnings, but installation is only
+/// aborted if malware is found in a dependency that would actually be installed.
 async fn check_malware(
     target: &InstallTarget<'_>,
-    extras: &ExtrasSpecificationWithDefaults,
-    groups: &DependencyGroupsWithDefaults,
+    resolution: &Resolution,
     client_builder: &BaseClientBuilder<'_>,
     concurrency: &Concurrency,
     malware_check_url: Option<DisplaySafeUrl>,
     cache: &Cache,
 ) -> Result<(), ProjectError> {
+    let installed_dependencies: FxHashSet<_> = resolution
+        .distributions()
+        .filter_map(|dist| dist.version().map(|version| (dist.name(), version)))
+        .collect();
+
+    let all_extras = ExtrasSpecification::from_all_extras().with_defaults(DefaultExtras::All);
+    let all_groups =
+        DependencyGroups::from_args(false, false, false, vec![], vec![], false, vec![], true)
+            .with_defaults(DefaultGroups::All);
+
     // NOTE: For now, we only check locked packages that indicate a source from
     // PyPI. The rationale behind this is that private (i.e. non-PyPI) packages
     // are almost certainly not going to be included in the OSV DB, and scanning
@@ -932,10 +940,11 @@ async fn check_malware(
     // information leak (of potentially private package names).
     // This effectively excludes public packages that are mirrored onto private
     // indices, which is a tradeoff we'll need to reconsider.
-    let auditable =
-        target
-            .lock()
-            .auditable(extras, groups, uv_resolver::Package::is_from_pypi_registry);
+    let auditable = target.lock().auditable(
+        &all_extras,
+        &all_groups,
+        uv_resolver::Package::is_from_pypi_registry,
+    );
     if auditable.is_empty() {
         return Ok(());
     }
@@ -952,7 +961,7 @@ async fn check_malware(
     let service = osv::Osv::new(client, Some(osv_url), concurrency.clone(), cache.clone());
 
     trace!(
-        "Running malware check for {} dependencies",
+        "Running malware check for {} locked dependencies",
         dependencies.len()
     );
 
@@ -973,9 +982,25 @@ async fn check_malware(
     if malware_findings.is_empty() {
         Ok(())
     } else {
-        Err(ProjectError::MalwareFound(MalwareFindings(
-            malware_findings,
-        )))
+        warn_user!(
+            "Malware detected in locked dependencies:\n{}",
+            MalwareFindings(malware_findings.clone())
+        );
+
+        let installed_malware_findings: Vec<_> = malware_findings
+            .into_iter()
+            .filter(|(dependency, _)| {
+                installed_dependencies.contains(&(dependency.name(), dependency.version()))
+            })
+            .collect();
+
+        if installed_malware_findings.is_empty() {
+            Ok(())
+        } else {
+            Err(ProjectError::MalwareFound(MalwareFindings(
+                installed_malware_findings,
+            )))
+        }
     }
 }
 
