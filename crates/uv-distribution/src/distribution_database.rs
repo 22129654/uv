@@ -713,7 +713,7 @@ impl<'a, Context: BuildContext> DistributionDatabase<'a, Context> {
                         WheelExtension::WhlZst => {
                             uv_extract::stream::untar_zst(&mut hasher, temp_dir.path())
                                 .await
-                            .map_err(|err| Error::Extract(filename.to_string(), err))?
+                                .map_err(|err| Error::Extract(filename.to_string(), err))?
                         }
                     },
                 };
@@ -1165,7 +1165,7 @@ impl<'a, Context: BuildContext> DistributionDatabase<'a, Context> {
                 .strip_prefix(temp_dir.path())
                 .expect("walkdir starts with root")
                 .to_path_buf();
-            let size = entry.metadata().map_err(Error::CacheRead)?.len();
+            let size = entry.metadata().map_err(Error::CacheWalk)?.len();
             files.push((relative, size));
         }
 

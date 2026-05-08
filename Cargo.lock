@@ -6126,7 +6126,6 @@ dependencies = [
  "uv-cache-key",
  "uv-dirs",
  "uv-distribution-types",
- "uv-fastid",
  "uv-fs",
  "uv-normalize",
  "uv-pypi-types",

@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::{LazyLock, Mutex};
+use std::sync::Mutex;
 
 use crate::hash::Blake3Digest;
 use crate::vendor::CloneableSeekableReader;
@@ -7,7 +7,7 @@ use crate::{CompressionMethod, Error, insecure_no_validate, validate_archive_mem
 use rayon::prelude::*;
 use rustc_hash::FxHashSet;
 use tracing::warn;
-use uv_configuration::RAYON_INITIALIZE;
+use uv_configuration::initialize_rayon_once;
 use uv_warnings::warn_user_once;
 use zip::ZipArchive;
 
@@ -19,7 +19,7 @@ use zip::ZipArchive;
 /// reads are effectively free.
 pub fn unzip(path: &Path, target: &Path) -> Result<Blake3Digest, Error> {
     // Initialize the rayon thread pool before spawning work.
-    LazyLock::force(&RAYON_INITIALIZE);
+    initialize_rayon_once();
 
     // Open the file for extraction.
     let file = fs_err::File::open(path).map_err(Error::Io)?;
