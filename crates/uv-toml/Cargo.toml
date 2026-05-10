@@ -16,4 +16,5 @@ doctest = false
 workspace = true
 
 [dependencies]
+toml_datetime = { workspace = true }
 toml_parser = { workspace = true }

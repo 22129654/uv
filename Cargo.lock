@@ -7278,6 +7278,7 @@ dependencies = [
 name = "uv-toml"
 version = "0.0.40"
 dependencies = [
+ "toml_datetime",
  "toml_parser",
 ]
 
