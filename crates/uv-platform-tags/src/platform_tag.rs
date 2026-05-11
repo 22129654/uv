@@ -688,6 +688,7 @@ impl FromStr for PlatformTag {
                     tag: s.to_string(),
                 });
             }
+            validate_release_arch(rest, s)?;
 
             return Ok(Self::FreeBsd {
                 release_arch: SmallString::from(rest),
@@ -702,6 +703,7 @@ impl FromStr for PlatformTag {
                     tag: s.to_string(),
                 });
             }
+            validate_release_arch(rest, s)?;
 
             return Ok(Self::NetBsd {
                 release_arch: SmallString::from(rest),
@@ -716,6 +718,7 @@ impl FromStr for PlatformTag {
                     tag: s.to_string(),
                 });
             }
+            validate_release_arch(rest, s)?;
 
             return Ok(Self::OpenBsd {
                 release_arch: SmallString::from(rest),
@@ -730,6 +733,7 @@ impl FromStr for PlatformTag {
                     tag: s.to_string(),
                 });
             }
+            validate_release_arch(rest, s)?;
 
             return Ok(Self::Dragonfly {
                 release_arch: SmallString::from(rest),
@@ -744,6 +748,7 @@ impl FromStr for PlatformTag {
                     tag: s.to_string(),
                 });
             }
+            validate_release_arch(rest, s)?;
 
             return Ok(Self::Haiku {
                 release_arch: SmallString::from(rest),
@@ -758,6 +763,7 @@ impl FromStr for PlatformTag {
                     tag: s.to_string(),
                 });
             }
+            validate_release_arch(rest, s)?;
 
             return Ok(Self::Illumos {
                 release_arch: SmallString::from(rest),
@@ -775,6 +781,8 @@ impl FromStr for PlatformTag {
 
             if let Some(release_arch) = rest.strip_suffix("_64bit") {
                 if !release_arch.is_empty() {
+                    validate_release_arch(release_arch, s)?;
+
                     return Ok(Self::Solaris {
                         release_arch: SmallString::from(release_arch),
                     });
@@ -872,6 +880,20 @@ impl FromStr for PlatformTag {
     }
 }
 
+fn validate_release_arch(release_arch: &str, tag: &str) -> Result<(), ParsePlatformTagError> {
+    if !release_arch.bytes().all(is_platform_tag_byte) {
+        return Err(ParsePlatformTagError::InvalidCharacters {
+            tag: tag.to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn is_platform_tag_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum ParsePlatformTagError {
     #[error("Unknown platform tag format: {0}")]
@@ -886,6 +908,8 @@ pub enum ParsePlatformTagError {
     InvalidArch { platform: &'static str, tag: String },
     #[error("Invalid API level in {platform} platform tag: {tag}")]
     InvalidApiLevel { platform: &'static str, tag: String },
+    #[error("Platform tag must contain only ASCII letters, digits, and underscores: {tag}")]
+    InvalidCharacters { tag: String },
 }
 
 #[cfg(test)]
@@ -1150,6 +1174,46 @@ mod tests {
             Err(ParsePlatformTagError::InvalidArch {
                 platform: "solaris",
                 tag: "solaris_11_4_x86_64".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn invalid_characters_platform() {
+        assert_eq!(
+            PlatformTag::from_str("freebsd_13_x86/64"),
+            Err(ParsePlatformTagError::InvalidCharacters {
+                tag: "freebsd_13_x86/64".to_string()
+            })
+        );
+        assert_eq!(
+            PlatformTag::from_str(r"netbsd_9_x86\64"),
+            Err(ParsePlatformTagError::InvalidCharacters {
+                tag: r"netbsd_9_x86\64".to_string()
+            })
+        );
+        assert_eq!(
+            PlatformTag::from_str("solaris_11_4_x86:64_64bit"),
+            Err(ParsePlatformTagError::InvalidCharacters {
+                tag: "solaris_11_4_x86:64_64bit".to_string()
+            })
+        );
+        assert_eq!(
+            PlatformTag::from_str("freebsd_13.14_x86_64"),
+            Err(ParsePlatformTagError::InvalidCharacters {
+                tag: "freebsd_13.14_x86_64".to_string()
+            })
+        );
+        assert_eq!(
+            PlatformTag::from_str("freebsd_13 x86_64"),
+            Err(ParsePlatformTagError::InvalidCharacters {
+                tag: "freebsd_13 x86_64".to_string()
+            })
+        );
+        assert_eq!(
+            PlatformTag::from_str("freebsd_13_x86\u{e9}"),
+            Err(ParsePlatformTagError::InvalidCharacters {
+                tag: "freebsd_13_x86\u{e9}".to_string()
             })
         );
     }
