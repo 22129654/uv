@@ -1243,7 +1243,7 @@ impl ValidatedLock {
         };
 
         // Determine whether the lockfile satisfies the workspace requirements.
-        match lock
+        let satisfies = match lock
             .satisfies(
                 install_path,
                 packages,
@@ -1259,12 +1259,29 @@ impl ValidatedLock {
                 indexes,
                 interpreter.tags()?,
                 interpreter.markers(),
+                &options.build_options,
                 hasher,
                 index,
                 database,
             )
-            .await?
+            .await
         {
+            Ok(result) => result,
+            Err(err) if err.is_no_build() => {
+                // A `--no-build` error here only means that validation couldn't convert a locked
+                // source distribution into an installable distribution. A fresh resolution may
+                // still succeed without building, for example when the project is static and
+                // `--no-install-project` is set. The distribution database still receives the real
+                // build options and will enforce `--no-build` if resolution needs built metadata.
+                debug!(
+                    "Resolving despite existing lockfile because validation can't reuse a source distribution with `--no-build`"
+                );
+                return Ok(Self::Preferable(lock));
+            }
+            Err(err) => return Err(ProjectError::Lock(err)),
+        };
+
+        match satisfies {
             SatisfiesResult::Satisfied => {
                 debug!("Existing `uv.lock` satisfies workspace requirements");
                 Ok(Self::Satisfies(lock))

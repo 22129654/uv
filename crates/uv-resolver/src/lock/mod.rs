@@ -1627,6 +1627,7 @@ impl Lock {
         indexes: Option<&IndexLocations>,
         tags: &Tags,
         markers: &MarkerEnvironment,
+        build_options: &BuildOptions,
         hasher: &HashStrategy,
         index: &InMemoryIndex,
         database: &DistributionDatabase<'_, Context>,
@@ -1987,12 +1988,8 @@ impl Lock {
 
             if let Some(version) = package.id.version.as_ref() {
                 // For a non-dynamic package, fetch the metadata from the distribution database.
-                let HashedDist { dist, .. } = package.to_dist(
-                    root,
-                    TagPolicy::Preferred(tags),
-                    &BuildOptions::default(),
-                    markers,
-                )?;
+                let HashedDist { dist, .. } =
+                    package.to_dist(root, TagPolicy::Preferred(tags), build_options, markers)?;
 
                 let metadata = {
                     let id = dist.distribution_id();
@@ -2142,7 +2139,7 @@ impl Lock {
                     let HashedDist { dist, .. } = package.to_dist(
                         root,
                         TagPolicy::Preferred(tags),
-                        &BuildOptions::default(),
+                        build_options,
                         markers,
                     )?;
 
@@ -5643,6 +5640,14 @@ impl LockError {
     /// Returns true if the [`LockError`] is a resolver error.
     pub fn is_resolution(&self) -> bool {
         matches!(&*self.kind, LockErrorKind::Resolution { .. })
+    }
+
+    /// Returns true if the [`LockError`] is caused by disabled builds.
+    pub fn is_no_build(&self) -> bool {
+        matches!(
+            &*self.kind,
+            LockErrorKind::NoBuild { .. } | LockErrorKind::NoBinaryNoBuild { .. }
+        )
     }
 }
 
