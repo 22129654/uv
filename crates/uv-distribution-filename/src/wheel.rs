@@ -434,7 +434,7 @@ mod tests {
         insta::assert_snapshot!(err, @r#"The wheel filename "foo-1.2.3-tag-py3-none-any.whl" has an invalid build tag: must start with a digit"#);
 
         let err = WheelFilename::from_str("foo-1.2.3-1/../../target-py3-none-any.whl").unwrap_err();
-        insta::assert_snapshot!(err, @r#"The wheel filename "foo-1.2.3-1/../../target-py3-none-any.whl" has an invalid build tag: must contain only ASCII letters, digits, and underscores"#);
+        insta::assert_snapshot!(err, @r#"The wheel filename "foo-1.2.3-1/../../target-py3-none-any.whl" has an invalid build tag: must contain only ASCII letters, digits, underscores, and periods"#);
     }
 
     #[test]
