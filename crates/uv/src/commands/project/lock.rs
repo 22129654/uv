@@ -853,9 +853,13 @@ async fn do_lock(
         .await
         {
             Ok(result) => Some(result),
-            Err(ProjectError::Lock(err)) if err.is_resolution() => {
+            Err(ProjectError::Lock(err)) if err.is_resolution() || err.is_no_build() => {
                 // Resolver errors are not recoverable, as such errors can leave the resolver in a
                 // broken state. Specifically, tasks that fail with an error can be left as pending.
+                //
+                // Disabled builds are user policy errors. Static local projects are validated
+                // before this point, so reaching this case means validation genuinely needs
+                // metadata that cannot be obtained under `--no-build`.
                 return Err(ProjectError::Lock(err));
             }
             Err(err) => {
@@ -1243,7 +1247,7 @@ impl ValidatedLock {
         };
 
         // Determine whether the lockfile satisfies the workspace requirements.
-        let satisfies = match lock
+        match lock
             .satisfies(
                 install_path,
                 packages,
@@ -1264,24 +1268,8 @@ impl ValidatedLock {
                 index,
                 database,
             )
-            .await
+            .await?
         {
-            Ok(result) => result,
-            Err(err) if err.is_no_build() => {
-                // A `--no-build` error here only means that validation couldn't convert a locked
-                // source distribution into an installable distribution. A fresh resolution may
-                // still succeed without building, for example when the project is static and
-                // `--no-install-project` is set. The distribution database still receives the real
-                // build options and will enforce `--no-build` if resolution needs built metadata.
-                debug!(
-                    "Resolving despite existing lockfile because validation can't reuse a source distribution with `--no-build`"
-                );
-                return Ok(Self::Preferable(lock));
-            }
-            Err(err) => return Err(ProjectError::Lock(err)),
-        };
-
-        match satisfies {
             SatisfiesResult::Satisfied => {
                 debug!("Existing `uv.lock` satisfies workspace requirements");
                 Ok(Self::Satisfies(lock))

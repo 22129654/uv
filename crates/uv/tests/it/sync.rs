@@ -6166,12 +6166,11 @@ fn no_install_project_no_build_locked_dynamic_metadata() -> Result<()> {
         .arg("--no-build")
         .arg("--locked"), @"
     success: false
-    exit_code: 1
+    exit_code: 2
     ----- stdout -----
 
     ----- stderr -----
-      × Failed to build `project @ file://[TEMP_DIR]/`
-      ╰─▶ Building source distributions for `project` is disabled
+    error: Distribution `project==0.1.0 @ editable+.` can't be installed because it is marked as `--no-build` but has no binary distribution
     ");
 
     assert!(!marker.exists());
