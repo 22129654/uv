@@ -3,7 +3,7 @@ use std::io::Cursor;
 use std::path::PathBuf;
 use std::process::Command;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use assert_cmd::prelude::*;
 use assert_fs::prelude::*;
 use flate2::write::GzEncoder;
@@ -1597,6 +1597,86 @@ fn install_editable() {
 }
 
 #[test]
+fn install_no_editable() {
+    let context = uv_test::test_context!("3.12");
+    let package = context.workspace_root.join("test/packages/executable_file");
+
+    uv_snapshot!(context.filters(), context.pip_install()
+        .arg("-e")
+        .arg(&package)
+        .arg("--no-editable"), @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Resolved 1 package in [TIME]
+    Prepared 1 package in [TIME]
+    Installed 1 package in [TIME]
+     + executable-file==1.0.0 (from file://[WORKSPACE]/test/packages/executable_file)
+    "
+    );
+
+    let path = context.site_packages().join("executable_file.pth");
+    assert!(!path.exists());
+}
+
+#[test]
+fn install_no_editable_requirements_txt() -> Result<()> {
+    let context = uv_test::test_context!("3.12");
+    let package = context.workspace_root.join("test/packages/executable_file");
+
+    let requirements_txt = context.temp_dir.child("requirements.txt");
+    requirements_txt.write_str(&format!("-e {}", package.simplified_display()))?;
+
+    uv_snapshot!(context.filters(), context.pip_install()
+        .arg("-r")
+        .arg("requirements.txt")
+        .arg("--no-editable"), @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Resolved 1 package in [TIME]
+    Prepared 1 package in [TIME]
+    Installed 1 package in [TIME]
+     + executable-file==1.0.0 (from file://[WORKSPACE]/test/packages/executable_file)
+    "
+    );
+
+    let path = context.site_packages().join("executable_file.pth");
+    assert!(!path.exists());
+
+    Ok(())
+}
+
+#[test]
+fn install_no_editable_env_var() {
+    let context = uv_test::test_context!("3.12");
+    let package = context.workspace_root.join("test/packages/executable_file");
+
+    uv_snapshot!(context.filters(), context.pip_install()
+        .env(EnvVars::UV_NO_EDITABLE, "1")
+        .arg("-e")
+        .arg(&package), @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Resolved 1 package in [TIME]
+    Prepared 1 package in [TIME]
+    Installed 1 package in [TIME]
+     + executable-file==1.0.0 (from file://[WORKSPACE]/test/packages/executable_file)
+    "
+    );
+
+    let path = context.site_packages().join("executable_file.pth");
+    assert!(!path.exists());
+}
+
+#[test]
 fn install_editable_and_registry() {
     let context = uv_test::test_context!("3.12");
 
@@ -2235,6 +2315,113 @@ fn install_implicit_git_public_https() {
     context.assert_installed("uv_public_pypackage", "0.1.0");
 }
 
+/// Install a package from a Git ref that contains a percent-encoded `@`.
+#[test]
+#[cfg(feature = "test-git")]
+fn install_git_percent_encoded_ref() -> Result<()> {
+    let context = uv_test::test_context!(DEFAULT_PYTHON_VERSION);
+
+    let repository = context.temp_dir.child("repository");
+    repository
+        .child("packages/example/example")
+        .create_dir_all()?;
+    repository
+        .child("packages/example/example/__init__.py")
+        .write_str(r#"__version__ = "0.1.0""#)?;
+    repository
+        .child("packages/example/pyproject.toml")
+        .write_str(indoc! {r#"
+        [project]
+        name = "example"
+        version = "0.1.0"
+        requires-python = ">=3.12"
+
+        [build-system]
+        requires = ["hatchling"]
+        build-backend = "hatchling.build"
+    "#})?;
+
+    Command::new("git")
+        .arg("init")
+        .arg(repository.path())
+        .assert()
+        .success();
+    Command::new("git")
+        .arg("-C")
+        .arg(repository.path())
+        .arg("add")
+        .arg(".")
+        .assert()
+        .success();
+    Command::new("git")
+        .arg("-C")
+        .arg(repository.path())
+        .arg("-c")
+        .arg("user.name=Example")
+        .arg("-c")
+        .arg("user.email=example@example.com")
+        .arg("commit")
+        .arg("-m")
+        .arg("Initial commit")
+        .env("GIT_AUTHOR_DATE", "2000-01-01T00:00:00Z")
+        .env("GIT_COMMITTER_DATE", "2000-01-01T00:00:00Z")
+        .assert()
+        .success();
+    Command::new("git")
+        .arg("-C")
+        .arg(repository.path())
+        .arg("tag")
+        .arg("pkg@1.2.3")
+        .assert()
+        .success();
+
+    let repository_url = Url::from_directory_path(repository.path())
+        .map_err(|()| anyhow!("failed to convert repository path to file URL"))?;
+    let repository_url = repository_url.as_str().trim_end_matches('/');
+
+    let mut filters = context.filters();
+    filters.push((r"@[0-9a-f]{40}", "@[COMMIT]"));
+    uv_snapshot!(filters, context
+        .pip_install()
+        .arg(format!(
+            "example @ git+{repository_url}@pkg%401.2.3#subdirectory=packages/example"
+        )), @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Resolved 1 package in [TIME]
+    Prepared 1 package in [TIME]
+    Installed 1 package in [TIME]
+     + example==0.1.0 (from git+file://[TEMP_DIR]/repository@[COMMIT]#subdirectory=packages/example)
+    ");
+
+    context.assert_installed("example", "0.1.0");
+
+    Ok(())
+}
+
+/// Reject an ambiguous Git URL when the ref contains an unescaped `@`.
+#[test]
+fn install_git_unescaped_ref() {
+    let context = uv_test::test_context!(DEFAULT_PYTHON_VERSION);
+
+    uv_snapshot!(context.filters(), context
+        .pip_install()
+        .arg("example @ git+https://example.com/repository@pkg@1.2.3"), @"
+    success: false
+    exit_code: 2
+    ----- stdout -----
+
+    ----- stderr -----
+    error: Failed to parse: `example @ git+https://example.com/repository@pkg@1.2.3`
+      Caused by: Ambiguous Git URL `https://example.com/repository@pkg@1.2.3`: the path contains multiple `@` characters. If the Git revision contains `@`, percent-encode it as `%40`
+    example @ git+https://example.com/repository@pkg@1.2.3
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ");
+}
+
 /// Install and update a package from a public GitHub repository
 #[test]
 #[cfg(feature = "test-git")]
@@ -2715,7 +2902,7 @@ fn install_git_private_https_interactive() {
 
     // The path to a git binary may be arbitrary, filter and replace
     // The trailing space is load bearing, as to not match on false positives
-    let filters: Vec<_> = [("\\/([[:alnum:]]*\\/)*git ", "/usr/bin/git ")]
+    let filters: Vec<_> = [(r"/([^/\s]+/)*git ", "/usr/bin/git ")]
         .into_iter()
         .chain(context.filters())
         .collect();
@@ -11962,6 +12149,61 @@ fn pep_751_install_directory() -> Result<()> {
 }
 
 #[test]
+fn pep_751_install_require_hashes_directory() -> Result<()> {
+    let context = uv_test::test_context!("3.12");
+
+    let pyproject_toml = context.temp_dir.child("foo").child("pyproject.toml");
+    pyproject_toml.write_str(
+        r#"
+        [project]
+        name = "foo"
+        version = "1.0.0"
+
+        [build-system]
+        requires = ["hatchling"]
+        build-backend = "hatchling.build"
+        "#,
+    )?;
+    context
+        .temp_dir
+        .child("foo")
+        .child("src")
+        .child("foo")
+        .child("__init__.py")
+        .touch()?;
+
+    let pylock_toml = context.temp_dir.child("pylock.toml");
+    pylock_toml.write_str(
+        r#"
+        lock-version = "1.0"
+        created-by = "uv"
+        requires-python = ">=3.12"
+
+        [[packages]]
+        name = "foo"
+        version = "1.0.0"
+        directory = { path = "foo" }
+        "#,
+    )?;
+
+    uv_snapshot!(context.filters(), context.pip_install()
+        .arg("--preview")
+        .arg("-r")
+        .arg("pylock.toml")
+        .arg("--require-hashes"), @"
+    success: false
+    exit_code: 2
+    ----- stdout -----
+
+    ----- stderr -----
+    error: In `--require-hashes` mode, all requirements must have a hash, but none were provided for: foo
+    "
+    );
+
+    Ok(())
+}
+
+#[test]
 #[cfg(feature = "test-git")]
 fn pep_751_install_git() -> Result<()> {
     let context = uv_test::test_context!("3.12");
@@ -14526,6 +14768,107 @@ fn build_backend_wrong_wheel_platform() -> Result<()> {
       ├─▶ Failed to build `py313 @ file://[TEMP_DIR]/child`
       ╰─▶ The built wheel `py313-0.1.0-py313-none-any.whl` is not compatible with the current Python 3.12 on [ARCH] [OS]
     ");
+
+    Ok(())
+}
+
+/// Test that `tool.uv.build-backend.data` files are installed for editable builds.
+///
+/// See <https://github.com/astral-sh/uv/issues/19258>.
+#[test]
+fn install_editable_uv_build_data() -> Result<()> {
+    let context = uv_test::test_context!("3.12");
+
+    let pyproject_toml = context.temp_dir.child("pyproject.toml");
+    pyproject_toml.write_str(indoc! {r#"
+        [project]
+        name = "project"
+        version = "0.1.0"
+
+        [build-system]
+        requires = ["uv_build>=0.7,<10000"]
+        build-backend = "uv_build"
+
+        [tool.uv.build-backend.data]
+        purelib = "purelib"
+        platlib = "platlib"
+        scripts = "scripts"
+        headers = "headers"
+        data = "data"
+    "#})?;
+
+    context.temp_dir.child("src/project/__init__.py").touch()?;
+    context
+        .temp_dir
+        .child("purelib/project-data.txt")
+        .write_str("project data")?;
+    context
+        .temp_dir
+        .child("platlib/project-platform-data.txt")
+        .write_str("project platform data")?;
+    context
+        .temp_dir
+        .child("scripts/project-script")
+        .write_str(indoc! {r#"
+            #!python
+            print("Hello from project script")
+        "#})?;
+    context
+        .temp_dir
+        .child("headers/project.h")
+        .write_str("#include <stdio.h>")?;
+    context
+        .temp_dir
+        .child("data/project-config.txt")
+        .write_str("project config")?;
+    uv_snapshot!(context.filters(), context.pip_install().arg("-e").arg("."), @"
+    success: true
+    exit_code: 0
+    ----- stdout -----
+
+    ----- stderr -----
+    Resolved 1 package in [TIME]
+    Prepared 1 package in [TIME]
+    Installed 1 package in [TIME]
+     + project==0.1.0 (from file://[TEMP_DIR]/)
+    ");
+
+    assert_snapshot!(
+        fs::read_to_string(context.site_packages().join("project-data.txt"))?,
+        @"project data"
+    );
+    assert_snapshot!(
+        fs::read_to_string(context.site_packages().join("project-platform-data.txt"))?,
+        @"project platform data"
+    );
+
+    let project_script = fs::read_to_string(venv_bin_path(&context.venv).join("project-script"))?;
+    let normalized_project_script = if let Some(index) = project_script.find('\n') {
+        format!("#![PYTHON]{}", &project_script[index..])
+    } else {
+        project_script
+    };
+    assert_snapshot!(
+        normalized_project_script,
+        @r#"
+        #![PYTHON]
+        print("Hello from project script")
+        "#
+    );
+
+    let record = fs::read_to_string(
+        context
+            .site_packages()
+            .join("project-0.1.0.dist-info")
+            .join("RECORD"),
+    )?;
+    assert!(record.lines().any(|line| line.contains("/project-script")));
+    assert!(record.lines().any(|line| line.contains("/project.h")));
+    assert!(
+        record
+            .lines()
+            .any(|line| line.contains("/project-config.txt"))
+    );
 
     Ok(())
 }
