@@ -5750,6 +5750,7 @@ dependencies = [
  "assert_cmd",
  "assert_fs",
  "astral-version-ranges",
+ "astral_async_zip",
  "axoupdater",
  "backon",
  "base64 0.22.1",
@@ -6428,7 +6429,6 @@ dependencies = [
  "uv-warnings",
  "uv-workspace",
  "walkdir",
- "zip",
 ]
 
 [[package]]
@@ -6514,7 +6514,6 @@ dependencies = [
  "uv-static",
  "uv-warnings",
  "xz2",
- "zip",
 ]
 
 [[package]]
@@ -6750,7 +6749,6 @@ dependencies = [
  "uv-distribution-filename",
  "uv-normalize",
  "uv-pypi-types",
- "zip",
 ]
 
 [[package]]
